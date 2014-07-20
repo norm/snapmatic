@@ -1,0 +1,54 @@
+#!/usr/bin/env perl
+
+use Modern::Perl '2012';
+use HTTP::CookieJar;
+use HTTP::Tiny;
+use IO::All;
+use JSON;
+
+use constant IMG_HOST => 'prod.cloud.rockstargames.com';
+use constant WEB_HOST => 'socialclub.rockstargames.com';
+
+my $member   = shift // 'invadernorm';
+my $platform = shift // 1;
+my $photos   = sprintf 'http://%s/member/%s/games/gtav/snapmatic/?platFormId=%d',
+                    WEB_HOST, $member, $platform;
+
+# yes, we're over 18
+my $jar = HTTP::CookieJar->new();
+$jar->add( 'http://socialclub.rockstargames.com', 'UAGC=1' );
+$jar->add( 'http://socialclub.rockstargames.com', 'UAGD=10/20/1930' );
+
+# fetch the most recent photos
+my $http = HTTP::Tiny->new( cookie_jar => $jar );
+my $page = get_content( $http, $photos );
+
+$page =~ m{ modelJson: (.*), \s* $}mx;
+my $data = from_json $1;
+
+foreach my $photo ( @$data ) {
+    my $id  = $photo->{'Meta'}{'Id'};
+    my $src = $photo->{'Meta'}{'ImgSrc'};
+
+    my $filename = "${id}.jpg";
+
+    if ( !-f $filename ) {
+        my $img_url = sprintf 'http://%s%s', IMG_HOST, $src;
+        my $image   = get_content( $http, $img_url );
+
+        $image > io $filename;
+    }
+}
+exit;
+
+sub get_content {
+    my $http = shift;
+    my $url  = shift;
+
+    my $get = $http->get( $url );
+
+    die( sprintf '%d %s', $get->{'status'}, $get->{'reason'} )
+        unless $get->{'status'} == 200;
+
+    return $get->{'content'};
+}
