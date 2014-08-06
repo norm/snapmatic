@@ -9,7 +9,10 @@ Installation
 
     # install some perl modules
     brew install cpanminus
-    sudo cpanm HTTP::CookieJar HTTP::Tiny IO::All JSON
+    sudo cpanm HTTP::CookieJar HTTP::Tiny IO::All JSON Modern::Perl
+
+    # execution permissions
+    sudo chmod +x snapmatic
 
     # copy the script to your $PATH
     sudo cp snapmatic /usr/local/bin
