@@ -5,6 +5,7 @@ use HTTP::CookieJar;
 use HTTP::Tiny;
 use IO::All;
 use JSON;
+use POSIX qw( strftime );
 
 use constant IMG_HOST => 'prod.cloud.rockstargames.com';
 use constant WEB_HOST => 'socialclub.rockstargames.com';
@@ -35,8 +36,10 @@ my $data = from_json $1;
 foreach my $photo ( @$data ) {
     my $id  = $photo->{'Meta'}{'Id'};
     my $src = $photo->{'Meta'}{'ImgSrc'};
+    my $timestamp = $photo->{'Meta'}{'CreatedTimestamp'};
 
-    my $filename = "${id}.jpg";
+    my $date = strftime("%Y%m%d%H%M%S", localtime($timestamp));
+    my $filename = "@{[ SNAP_PATH ]}/${date}.jpg";
 
     if ( !-f $filename ) {
         my $img_url = sprintf 'http://%s%s', IMG_HOST, $src;
