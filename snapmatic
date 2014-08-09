@@ -5,9 +5,11 @@ use HTTP::CookieJar;
 use HTTP::Tiny;
 use IO::All;
 use JSON;
+use POSIX qw( strftime );
 
 use constant IMG_HOST => 'prod.cloud.rockstargames.com';
 use constant WEB_HOST => 'socialclub.rockstargames.com';
+use constant SNAP_PATH => 'snaps';
 
 my $member   = shift // 'invadernorm';
 my $platform = shift // 1;
@@ -19,6 +21,11 @@ my $jar = HTTP::CookieJar->new();
 $jar->add( 'http://socialclub.rockstargames.com', 'UAGC=1' );
 $jar->add( 'http://socialclub.rockstargames.com', 'UAGD=10/20/1930' );
 
+# check if SNAP_PATH exists
+if (! -d SNAP_PATH) {
+    mkdir(SNAP_PATH);
+}
+
 # fetch the most recent photos
 my $http = HTTP::Tiny->new( cookie_jar => $jar );
 my $page = get_content( $http, $photos );
@@ -29,8 +36,10 @@ my $data = from_json $1;
 foreach my $photo ( @$data ) {
     my $id  = $photo->{'Meta'}{'Id'};
     my $src = $photo->{'Meta'}{'ImgSrc'};
+    my $timestamp = $photo->{'Meta'}{'CreatedTimestamp'};
 
-    my $filename = "${id}.jpg";
+    my $date = strftime("%Y%m%d%H%M%S", localtime($timestamp));
+    my $filename = "@{[ SNAP_PATH ]}/${date}.jpg";
 
     if ( !-f $filename ) {
         my $img_url = sprintf 'http://%s%s', IMG_HOST, $src;
