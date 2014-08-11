@@ -3,6 +3,7 @@
 use Modern::Perl '2012';
 use File::Basename;
 use File::Path;
+use Getopt::Std;
 use HTTP::CookieJar;
 use HTTP::Tiny;
 use IO::All;
