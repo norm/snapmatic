@@ -9,12 +9,13 @@ use HTTP::Tiny;
 use IO::All;
 use JSON;
 use Pod::Usage;
+use POSIX       qw( strftime );
 
 use constant IMG_HOST => 'prod.cloud.rockstargames.com';
 use constant WEB_HOST => 'socialclub.rockstargames.com';
 
 my %option;
-getopts( 'hmo:', \%option );
+getopts( 'dhmo:t', \%option );
 pod2usage() if $option{'h'};
 
 my $member   = shift // 'invadernorm';
@@ -38,8 +39,17 @@ foreach my $photo ( @$data ) {
     my $id  = $photo->{'Meta'}{'Id'};
     my $src = $photo->{'Meta'}{'ImgSrc'};
 
+    my $taken  = $photo->{'Meta'}{'CreatedTimestamp'};
+    my $stamp  = strftime '%Y-%m-%d-%H.%M.%S', localtime($taken);
+    my $subdir = strftime '%Y/%m/%d/%H.%M.%S', localtime($taken);
+
     # save photo file
     my $filename = "${id}.jpg";
+
+    $filename = "${stamp}.jpg"
+        if $option{'t'};
+    $filename = "${subdir}.jpg"
+        if $option{'d'};
 
     $filename = "$option{'o'}/$filename"
         if $option{'o'};
@@ -83,7 +93,7 @@ B<snapmatic> - fetch photos from Rockstar's Social Club
 
 =head1 USAGE
 
-snapmatic [-m] [-o <dir>] <account> [<platform>]
+snapmatic [-m] [-o <dir>] [-d|-t] <account> [<platform>]
 
 =over
 
@@ -94,6 +104,19 @@ Download the metadata (in JSON format) in addition to photo
 =item -o <dir>
 
 Download files to <dir> rather than current directory
+
+=item -t
+
+Use the time the photo was taken as the filename, not the ID. 
+eg C<2014-08-11-22.00.42.jpg>
+
+=item -d
+
+Use the time the photo was taken as the filename, not the ID.
+Creates subdirectories based on year, month, and day.
+eg C<2014/08/11/22.00.42.jpg>.
+
+If both C<-t> and C<-d> are specified, C<-d> takes precedence.
 
 =item <account>
 
