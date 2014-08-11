@@ -1,6 +1,8 @@
 #!/usr/bin/env perl
 
 use Modern::Perl '2012';
+use File::Basename;
+use File::Path;
 use HTTP::CookieJar;
 use HTTP::Tiny;
 use IO::All;
@@ -11,7 +13,7 @@ use constant IMG_HOST => 'prod.cloud.rockstargames.com';
 use constant WEB_HOST => 'socialclub.rockstargames.com';
 
 my %option;
-getopts( 'h', \%option );
+getopts( 'ho:', \%option );
 pod2usage() if $option{'h'};
 
 my $member   = shift // 'invadernorm';
@@ -36,6 +38,11 @@ foreach my $photo ( @$data ) {
     my $src = $photo->{'Meta'}{'ImgSrc'};
 
     my $filename = "${id}.jpg";
+
+    $filename = "$option{'o'}/$filename"
+        if $option{'o'};
+
+    mkpath dirname $filename;
 
     if ( !-f $filename ) {
         my $img_url = sprintf 'http://%s%s', IMG_HOST, $src;
@@ -66,9 +73,13 @@ B<snapmatic> - fetch photos from Rockstar's Social Club
 
 =head1 USAGE
 
-snapmatic <account> [<platform>]
+snapmatic [-o <dir>] <account> [<platform>]
 
 =over
+
+=item -o <dir>
+
+Download files to <dir> rather than current directory
 
 =item <account>
 
