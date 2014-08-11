@@ -14,7 +14,7 @@ use constant IMG_HOST => 'prod.cloud.rockstargames.com';
 use constant WEB_HOST => 'socialclub.rockstargames.com';
 
 my %option;
-getopts( 'ho:', \%option );
+getopts( 'hmo:', \%option );
 pod2usage() if $option{'h'};
 
 my $member   = shift // 'invadernorm';
@@ -38,6 +38,7 @@ foreach my $photo ( @$data ) {
     my $id  = $photo->{'Meta'}{'Id'};
     my $src = $photo->{'Meta'}{'ImgSrc'};
 
+    # save photo file
     my $filename = "${id}.jpg";
 
     $filename = "$option{'o'}/$filename"
@@ -50,6 +51,14 @@ foreach my $photo ( @$data ) {
         my $image   = get_content( $http, $img_url );
 
         $image > io $filename;
+    }
+
+    # optionally save json data
+    if ( $option{'m'} ) {
+        $filename =~ s{\.jpg$}{.json};
+
+        to_json($photo) > io $filename
+            if !-f $filename;
     }
 }
 exit;
@@ -74,9 +83,13 @@ B<snapmatic> - fetch photos from Rockstar's Social Club
 
 =head1 USAGE
 
-snapmatic [-o <dir>] <account> [<platform>]
+snapmatic [-m] [-o <dir>] <account> [<platform>]
 
 =over
+
+=item -m
+
+Download the metadata (in JSON format) in addition to photo
 
 =item -o <dir>
 
