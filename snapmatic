@@ -1,142 +1,116 @@
-#!/usr/bin/env perl
+from bs4 import BeautifulSoup
+from datetime import datetime
+import errno
+import json
+from optparse import OptionParser
+import os
+import requests
+import sys
+import urllib
 
-use Modern::Perl '2012';
-use File::Basename;
-use File::Path;
-use Getopt::Std;
-use HTTP::CookieJar;
-use HTTP::Tiny;
-use IO::All;
-use JSON;
-use Pod::Usage;
-use POSIX       qw( strftime );
 
-use constant IMG_HOST => 'prod.cloud.rockstargames.com';
-use constant WEB_HOST => 'socialclub.rockstargames.com';
+SIGNIN_PAGE = 'https://socialclub.rockstargames.com/profile/signin'
+SNAPS = 'http://socialclub.rockstargames.com/games/gtav/snapmatic/ajax/search?SearchQuery=&Filter=myphotos&Page=%s&_=1439979750279'
 
-my %option;
-getopts( 'dhmo:t', \%option );
-pod2usage() if $option{'h'};
 
-my $member   = shift // 'invadernorm';
-my $platform = shift // 1;
-my $photos   = sprintf 'http://%s/member/%s/games/gtav/snapmatic/?platFormId=%d',
-                    WEB_HOST, $member, $platform;
+parser = OptionParser()
+parser.add_option(
+    '-d', '--use-subdirs', dest='subdirs', help='Save to timestamped subdirs',
+    action='store_true')
+parser.add_option(
+    '-l', '--user', dest='user', help='Social Club login')
+parser.add_option(
+    '-m', '--metadata', dest='metadata', help='Download metadata too',
+    action='store_true')
+parser.add_option(
+    '-o', '--directory', dest='directory', help='Output directory')
+parser.add_option(
+    '-p', '--password', dest='password', help='Social Club password')
+parser.add_option(
+    '-t', '--use-timestamp', dest='timestamp', help='Save as timestamp with ID',
+    action='store_true')
+parser.add_option(
+    '-v', '--verbose', dest='verbose', help='Verbose activity output',
+    action='store_true')
+(options, args) = parser.parse_args()
 
-# yes, we're over 18
-my $jar = HTTP::CookieJar->new();
-$jar->add( 'http://socialclub.rockstargames.com', 'UAGC=1' );
-$jar->add( 'http://socialclub.rockstargames.com', 'UAGD=10/20/1930' );
-
-# fetch the most recent photos
-my $http = HTTP::Tiny->new( cookie_jar => $jar );
-my $page = get_content( $http, $photos );
-
-$page =~ m{ modelJson: (.*), \s* $}mx;
-my $data = from_json $1;
-
-foreach my $photo ( @$data ) {
-    my $id  = $photo->{'Meta'}{'Id'};
-    my $src = $photo->{'Meta'}{'ImgSrc'};
-
-    my $taken  = $photo->{'Meta'}{'CreatedTimestamp'};
-    my $stamp  = strftime '%Y-%m-%d-%H.%M.%S', localtime($taken);
-    my $subdir = strftime '%Y/%m/%d/%H.%M.%S', localtime($taken);
-
-    # save photo file
-    my $filename = "${id}.jpg";
-
-    $filename = "${stamp}.jpg"
-        if $option{'t'};
-    $filename = "${subdir}.jpg"
-        if $option{'d'};
-
-    $filename = "$option{'o'}/$filename"
-        if $option{'o'};
-
-    mkpath dirname $filename;
-
-    if ( !-f $filename ) {
-        my $img_url = sprintf 'http://%s%s', IMG_HOST, $src;
-        my $image   = get_content( $http, $img_url );
-
-        $image > io $filename;
-    }
-
-    # optionally save json data
-    if ( $option{'m'} ) {
-        $filename =~ s{\.jpg$}{.json};
-
-        to_json($photo) > io $filename
-            if !-f $filename;
-    }
+login_data = {
+    'login': options.user or os.getenv('SOCIALCLUB_USER'),
+    'password': options.password or os.getenv('SOCIALCLUB_PASSWORD'),
 }
-exit;
+token = None
+page = 1
 
-sub get_content {
-    my $http = shift;
-    my $url  = shift;
+if login_data['login'] is None or login_data['password'] is None:
+    print 'Need login and password for Social Club.'
+    sys.exit(1)
 
-    my $get = $http->get( $url );
+session = requests.Session()
+start = session.get(SIGNIN_PAGE)
+soup = BeautifulSoup(start.content, 'html5lib')
+form = soup.find(id='loginSlideForm')
+for el in form.find_all('input'):
+    if el.attrs['name'] == '__RequestVerificationToken':
+        token = el.attrs['value']
 
-    die( sprintf '%d %s', $get->{'status'}, $get->{'reason'} )
-        unless $get->{'status'} == 200;
+if token:
+    login_data['__RequestVerificationToken'] = token
+    result = session.post(SIGNIN_PAGE, data=login_data)
+    if not result.ok:
+        print 'Error logging in.'
+        sys.exit(1)
 
-    return $get->{'content'};
-}
+    while page is not None:
+        url = SNAPS % page
+        data = session.get(url)
+        if not data.ok:
+            print 'Error fetching photo data.'
+            sys.exit(1)
+        if not data.headers['content-type'].startswith('application/json'):
+            print 'Not JSON fetching photo data.'
+            sys.exit(1)
 
-__END__
+        photos = json.loads(data.content)
+        page += 1
 
-=head1 SYNOPSIS
+        if len(photos['Photos']) == 0:
+            break
 
-B<snapmatic> - fetch photos from Rockstar's Social Club
+        for photo in photos['Photos']:
+            image = photo['Meta']['ImgSrc']
+            when = datetime.fromtimestamp(photo['Meta']['CreatedTimestamp'])
+            filename = os.path.basename(image)
+            directory = '.'
+            
+            if options.directory:
+                directory = options.directory
+            if options.subdirs:
+                datedirs = when.strftime('%Y/%m/%d')
+                directory = '%s/%s' % (directory, datedirs)
+            if options.timestamp:
+                timestamp = when.strftime('%Y-%m-%d-%H.%M.%S')
+                filename = '%s.%s.jpg' % (timestamp, photo['Meta']['Id'])
 
-=head1 USAGE
+            try:
+                os.makedirs(directory)
+            except OSError as exc:
+                if exc.errno == errno.EEXIST and os.path.isdir(directory):
+                    pass
+                else:
+                    raise
 
-snapmatic [-m] [-o <dir>] [-d|-t] <account> [<platform>]
+            output = '%s/%s' % (directory, filename)
+            if not os.path.isfile(output):
+                urllib.urlretrieve(image, output)
+                if options.verbose:
+                    print ' ++ ', output
+            else:
+                if options.verbose:
+                    print '    ', output
 
-=over
-
-=item -m
-
-Download the metadata (in JSON format) in addition to photo
-
-=item -o <dir>
-
-Download files to <dir> rather than current directory
-
-=item -t
-
-Use the time the photo was taken as the filename, not the ID. 
-eg C<2014-08-11-22.00.42.jpg>
-
-=item -d
-
-Use the time the photo was taken as the filename, not the ID.
-Creates subdirectories based on year, month, and day.
-eg C<2014/08/11/22.00.42.jpg>.
-
-If both C<-t> and C<-d> are specified, C<-d> takes precedence.
-
-=item <account>
-
-The slug of the Social Club account, normally the account name but lowercase.
-You can confirm this by logging into Social Club and clicking the profile link
-in the top right. The URL will end with the slug.
-
-=item <platform>
-
-The platform ID: 1 for Xbox 360 (default), 2 for PS3.
-
-=back
-
-=head1 AUTHOR
-
-Mark Norman Francis, <norm@cackhanded.net>.
-
-=head1 COPYRIGHT AND LICENSE
-
-Copyright 2014 Mark Norman Francis.
-
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself.
+            if options.metadata:
+                output = output.replace('.jpg', '.json')
+                with open(output, 'w') as file:
+                    json.dump(photo, file, indent=4, sort_keys=True)
+                    if options.verbose:
+                        print ' ++ ', output

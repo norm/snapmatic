@@ -1,4 +1,5 @@
 all:
 
 install:
-	rsync snapmatic ${HOME}/bin
+	sudo cp snapmatic /usr/local/bin
+	sudo chmod 755 /usr/local/bin/snapmatic
